@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHRIF-SoC · Custom Silicon on Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060a0f;
+    --surface: #0c1117;
+    --border: #1a2a1a;
+    --pcb: #0d2b1a;
+    --trace: #00ff88;
+    --trace2: #00ccff;
+    --accent: #ff6b35;
+    --gold: #ffd166;
+    --text: #c8d8c8;
+    --dim: #4a6a4a;
+    --glow: 0 0 20px rgba(0,255,136,0.4);
+    --glow2: 0 0 20px rgba(0,204,255,0.4);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* CUSTOM CURSOR */
+  #cursor {
+    position: fixed; width: 12px; height: 12px;
+    background: var(--trace); border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    transform: translate(-50%,-50%);
+    transition: transform 0.1s, width 0.2s, height 0.2s, opacity 0.2s;
+    box-shadow: var(--glow);
+    mix-blend-mode: screen;
+  }
+  #cursor-ring {
+    position: fixed; width: 36px; height: 36px;
+    border: 1px solid rgba(0,255,136,0.4);
+    border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%,-50%);
+    transition: transform 0.15s ease, width 0.3s, height 0.3s;
+  }
+
+  /* CIRCUIT CANVAS BG */
+  #circuit-bg {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0; opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 48px;
+    background: rgba(6,10,15,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0,255,136,0.12);
+  }
+  .nav-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px; font-weight: 900;
+    color: var(--trace);
+    letter-spacing: 4px;
+    text-shadow: var(--glow);
+  }
+  .nav-links {
+    display: flex; gap: 36px; list-style: none;
+  }
+  .nav-links a {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; color: var(--dim);
+    text-decoration: none; letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: color 0.2s;
+    position: relative;
+  }
+  .nav-links a::after {
+    content: ''; position: absolute; bottom: -4px; left: 0;
+    width: 0; height: 1px; background: var(--trace);
+    transition: width 0.3s;
+  }
+  .nav-links a:hover { color: var(--trace); }
+  .nav-links a:hover::after { width: 100%; }
+  .nav-status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--trace);
+    animation: pulse-dot 1.5s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; box-shadow: 0 0 6px var(--trace); }
+    50% { opacity:0.4; box-shadow: none; }
+  }
+
+  section { position: relative; z-index: 1; }
+
+  /* ── HERO ── */
+  #hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 120px 48px 60px;
+    text-align: center;
+  }
+  .hero-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 4px;
+    color: var(--trace2);
+    border: 1px solid rgba(0,204,255,0.3);
+    padding: 6px 18px; border-radius: 2px;
+    margin-bottom: 32px;
+    opacity: 0; animation: fadeUp 0.8s 0.2s forwards;
+  }
+  .hero-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(42px, 8vw, 96px);
+    font-weight: 900; line-height: 1;
+    letter-spacing: -2px;
+    color: #fff;
+    opacity: 0; animation: fadeUp 0.8s 0.4s forwards;
+  }
+  .hero-title span { color: var(--trace); text-shadow: var(--glow); }
+  .hero-sub {
+    font-size: 16px; font-weight: 300;
+    color: var(--dim); margin-top: 20px;
+    letter-spacing: 1px; max-width: 560px;
+    opacity: 0; animation: fadeUp 0.8s 0.6s forwards;
+  }
+
+  /* 3D PCB SCENE */
+  #pcb-scene {
+    width: 480px; height: 340px;
+    margin: 56px auto 40px;
+    perspective: 900px;
+    opacity: 0; animation: fadeUp 1s 0.8s forwards;
+    cursor: grab;
+  }
+  #pcb-scene:active { cursor: grabbing; }
+  #pcb-board {
+    width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    transform: rotateX(28deg) rotateY(-18deg);
+    transition: transform 0.05s linear;
+    position: relative;
+  }
+
+  /* PCB layers */
+  .pcb-face {
+    position: absolute; width: 100%; height: 100%;
+    border-radius: 8px;
+    backface-visibility: hidden;
+  }
+  .pcb-front {
+    background: #0d3020;
+    border: 2px solid #1a5530;
+    transform: translateZ(6px);
+    overflow: hidden;
+  }
+  .pcb-back {
+    background: #1a2f1a;
+    border: 2px solid #1a3a1a;
+    transform: rotateY(180deg) translateZ(6px);
+    overflow: hidden;
+  }
+  .pcb-edge-r { position: absolute; top:8px; bottom:8px; right: -6px;
+    width:12px; background: #0a4020; transform: rotateY(90deg) translateZ(-3px);
+    transform-origin: right center; }
+  .pcb-edge-l { position: absolute; top:8px; bottom:8px; left:-6px;
+    width:12px; background: #0a4020; transform: rotateY(-90deg) translateZ(-3px);
+    transform-origin: left center; }
+  .pcb-edge-t { position: absolute; left:8px; right:8px; top:-6px;
+    height:12px; background: #0a4020; transform: rotateX(90deg) translateZ(-3px);
+    transform-origin: top center; }
+  .pcb-edge-b { position: absolute; left:8px; right:8px; bottom:-6px;
+    height:12px; background: #0a4020; transform: rotateX(-90deg) translateZ(-3px);
+    transform-origin: bottom center; }
+
+  canvas#pcb-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; border-radius: 6px;
+  }
+
+  /* Chip Components on PCB */
+  .chip {
+    position: absolute;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 7px; color: #888;
+    letter-spacing: 0.5px;
+  }
+  .chip.main {
+    width: 90px; height: 90px;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) translateZ(4px);
+    background: linear-gradient(135deg, #1a1a1a, #0d0d0d);
+    border: 1px solid #444;
+    font-size: 9px; color: #aaa;
+    flex-direction: column; gap: 3px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.02);
+  }
+  .chip.main::before {
+    content: ''; position: absolute; top: 6px; left: 6px;
+    width: 10px; height: 10px;
+    border-radius: 50%; background: #222;
+    border: 1px solid #333;
+  }
+
+  .hero-stats {
+    display: flex; gap: 40px; justify-content: center;
+    margin-top: 0;
+    opacity: 0; animation: fadeUp 0.8s 1s forwards;
+  }
+  .stat { text-align: center; }
+  .stat-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px; font-weight: 700;
+    color: var(--trace); text-shadow: var(--glow);
+  }
+  .stat-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; color: var(--dim);
+    letter-spacing: 2px; margin-top: 4px;
+  }
+  .scroll-cue {
+    margin-top: 60px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; color: var(--dim);
+    letter-spacing: 3px;
+    animation: bounce 2s infinite;
+    opacity: 0; animation: fadeUp 0.8s 1.2s forwards, bounce 2s 2s infinite;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(24px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+  @keyframes bounce {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(6px); }
+  }
+
+  /* ── SECTION COMMON ── */
+  .section-wrap {
+    max-width: 1200px; margin: 0 auto;
+    padding: 120px 48px;
+  }
+  .section-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 4px;
+    color: var(--trace2); text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-tag::before {
+    content: '//'; color: var(--dim);
+  }
+  .section-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 700; color: #fff;
+    line-height: 1.1; margin-bottom: 48px;
+  }
+
+  /* ── ARCHITECTURE ── */
+  #architecture { background: var(--surface); }
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    background: rgba(0,255,136,0.06);
+    border: 1px solid rgba(0,255,136,0.1);
+  }
+  .arch-block {
+    background: var(--bg);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+    cursor: pointer;
+  }
+  .arch-block:hover { background: rgba(0,255,136,0.04); }
+  .arch-block::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--trace), transparent);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .arch-block:hover::after { opacity: 1; }
+  .arch-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--dim);
+    letter-spacing: 2px; margin-bottom: 12px;
+  }
+  .arch-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px; font-weight: 700;
+    color: var(--trace); margin-bottom: 10px;
+  }
+  .arch-desc {
+    font-size: 13px; line-height: 1.7;
+    color: var(--dim);
+  }
+  .arch-icon {
+    position: absolute; bottom: 20px; right: 24px;
+    font-size: 36px; opacity: 0.08;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .arch-block:hover .arch-icon { opacity: 0.2; transform: scale(1.1); }
+
+  /* ── SPECS ── */
+  #specs { background: var(--bg); }
+  .specs-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 60px;
+  }
+  .spec-category { margin-bottom: 32px; }
+  .spec-cat-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--trace2);
+    letter-spacing: 3px; text-transform: uppercase;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0,204,255,0.2);
+  }
+  .spec-row {
+    display: flex; justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: padding-left 0.2s;
+  }
+  .spec-row:hover { padding-left: 8px; }
+  .spec-key {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; color: var(--dim);
+  }
+  .spec-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; color: var(--text);
+    text-align: right;
+  }
+  .spec-val.highlight { color: var(--trace); text-shadow: var(--glow); }
+
+  /* PERFORMANCE BARS */
+  .perf-bars { display: flex; flex-direction: column; gap: 20px; }
+  .perf-item {}
+  .perf-header {
+    display: flex; justify-content: space-between;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .perf-track {
+    height: 3px; background: rgba(255,255,255,0.06);
+    border-radius: 2px; overflow: hidden;
+  }
+  .perf-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--trace), var(--trace2));
+    width: 0;
+    transition: width 1.5s cubic-bezier(0.16,1,0.3,1);
+    box-shadow: 0 0 8px rgba(0,255,136,0.5);
+  }
+
+  /* ── PIN DIAGRAM ── */
+  #pinout { background: var(--surface); }
+  .pinout-container {
+    display: flex; gap: 48px; align-items: flex-start;
+  }
+  #pin-canvas-wrap {
+    flex: 0 0 auto;
+    width: 380px;
+  }
+  #pin-canvas {
+    width: 380px; height: 500px;
+    border: 1px solid rgba(0,255,136,0.1);
+  }
+  .pin-info {
+    flex: 1;
+    padding-top: 12px;
+  }
+  .pin-info-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px; color: var(--trace);
+    margin-bottom: 8px;
+    text-shadow: var(--glow);
+  }
+  .pin-info-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--dim);
+    letter-spacing: 2px; margin-bottom: 20px;
+  }
+  .pin-info-desc {
+    font-size: 14px; line-height: 1.8;
+    color: var(--text); margin-bottom: 24px;
+  }
+  .pin-legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; color: var(--dim); letter-spacing: 1px;
+  }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── FEATURES ── */
+  #features { background: var(--bg); }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: rgba(0,255,136,0.06);
+  }
+  .feat-card {
+    background: var(--bg);
+    padding: 40px 32px;
+    position: relative; overflow: hidden;
+    transition: background 0.3s;
+  }
+  .feat-card:hover { background: rgba(0,255,136,0.03); }
+  .feat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 3px; height: 0;
+    background: var(--trace);
+    transition: height 0.4s;
+  }
+  .feat-card:hover::before { height: 100%; }
+  .feat-icon-wrap {
+    width: 48px; height: 48px;
+    border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 20px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .feat-card:hover .feat-icon-wrap {
+    border-color: var(--trace);
+    box-shadow: var(--glow);
+  }
+  .feat-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px; font-weight: 700;
+    color: #fff; margin-bottom: 12px;
+  }
+  .feat-desc {
+    font-size: 13px; color: var(--dim); line-height: 1.7;
+  }
+
+  /* ── LAYERS EXPLORER ── */
+  #layers { background: var(--surface); }
+  .layers-wrap {
+    display: flex; gap: 60px; align-items: center;
+  }
+  .layer-stack {
+    flex: 0 0 auto;
+    width: 320px; height: 360px;
+    perspective: 800px;
+    position: relative;
+  }
+  #layer-container {
+    transform-style: preserve-3d;
+    transform: rotateX(30deg) rotateY(-20deg);
+    width: 100%; height: 100%;
+    position: relative;
+    transition: transform 0.3s ease;
+  }
+  .pcb-layer {
+    position: absolute;
+    width: 220px; height: 160px;
+    left: 50%; transform-origin: center center;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px; letter-spacing: 2px;
+    cursor: pointer;
+    transition: opacity 0.3s, filter 0.3s;
+  }
+  .pcb-layer span { text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+  .layers-list { flex: 1; }
+  .layer-item {
+    padding: 16px 20px;
+    border-left: 2px solid transparent;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, padding-left 0.2s;
+    border-radius: 0 4px 4px 0;
+  }
+  .layer-item:hover, .layer-item.active {
+    border-color: var(--trace);
+    background: rgba(0,255,136,0.05);
+    padding-left: 28px;
+  }
+  .layer-item-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px; font-weight: 700; color: #fff;
+    margin-bottom: 4px;
+  }
+  .layer-item-desc {
+    font-size: 12px; color: var(--dim); line-height: 1.5;
+  }
+
+  /* ── TERMINAL ── */
+  #terminal-section { background: var(--bg); }
+  .terminal-wrap {
+    background: #050805;
+    border: 1px solid rgba(0,255,136,0.15);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(0,0,0,0.8);
+  }
+  .terminal-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    background: rgba(0,255,136,0.05);
+    border-bottom: 1px solid rgba(0,255,136,0.1);
+  }
+  .t-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .t-dot.r { background: #ff5f57; }
+  .t-dot.y { background: #febc2e; }
+  .t-dot.g { background: #28c840; }
+  .t-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; color: var(--dim);
+    margin-left: 8px;
+  }
+  .terminal-body {
+    padding: 24px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px; line-height: 1.9;
+    color: var(--trace);
+    min-height: 320px;
+    overflow-y: auto;
+  }
+  .t-line { margin-bottom: 2px; }
+  .t-prompt { color: var(--trace2); }
+  .t-cmd { color: #fff; }
+  .t-out { color: #5a8a6a; }
+  .t-val { color: var(--gold); }
+  .t-err { color: var(--accent); }
+  .t-cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--trace);
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--surface);
+    border-top: 1px solid rgba(0,255,136,0.1);
+    padding: 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: relative; z-index: 1;
+  }
+  .footer-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px; font-weight: 900;
+    color: var(--trace); text-shadow: var(--glow);
+  }
+  .footer-copy {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; color: var(--dim); letter-spacing: 2px;
+  }
+
+  /* REVEAL ANIMATIONS */
+  .reveal {
+    opacity: 0; transform: translateY(32px);
+    transition: opacity 0.8s, transform 0.8s;
+  }
+  .reveal.visible {
+    opacity: 1; transform: translateY(0);
+  }
+
+  /* SCAN LINE OVERLAY */
+  body::after {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.03) 0px,
+      rgba(0,0,0,0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none; z-index: 9000;
+  }
+
+  /* CORNER DECORATION */
+  .corner-deco {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: var(--trace);
+    border-style: solid;
+    opacity: 0.4;
+  }
+  .corner-deco.tl { top: 20px; left: 20px; border-width: 1px 0 0 1px; }
+  .corner-deco.tr { top: 20px; right: 20px; border-width: 1px 1px 0 0; }
+  .corner-deco.bl { bottom: 20px; left: 20px; border-width: 0 0 1px 1px; }
+  .corner-deco.br { bottom: 20px; right: 20px; border-width: 0 1px 1px 0; }
+
+  /* HEXAGON GRID PATTERN */
+  .hex-bg {
+    position: absolute; inset: 0;
+    background-image: 
+      radial-gradient(circle at 1px 1px, rgba(0,255,136,0.06) 1px, transparent 0);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    nav { padding: 14px 20px; }
+    .nav-links { display: none; }
+    .section-wrap { padding: 80px 20px; }
+    .specs-layout, .pinout-container, .layers-wrap, .arch-grid { grid-template-columns: 1fr; flex-direction: column; }
+    .features-grid { grid-template-columns: 1fr; }
+    #pcb-scene { width: 320px; height: 240px; }
+    footer { flex-direction: column; gap: 16px; text-align: center; }
+  }
+
+/* === VISUAL ENHANCEMENTS PATCH === */
+:root {
+  --text: #d6e6d6;
+  --dim: #6f8f6f;
+  --glow: 0 0 25px rgba(0,255,136,0.5);
+  --glow2: 0 0 25px rgba(0,204,255,0.5);
+}
+
+.section-wrap {
+  background: rgba(255,255,255,0.01);
+  backdrop-filter: blur(6px);
+  border-radius: 6px;
+}
+
+.arch-block,
+.feat-card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.3s;
+}
+
+.arch-block:hover,
+.feat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+
+.section-title {
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(255,255,255,0.08);
+}
+
+.section-title::after {
+  content: '';
+  display: block;
+  width: 80px;
+  height: 2px;
+  margin-top: 12px;
+  background: linear-gradient(90deg, var(--trace), transparent);
+}
+
+nav {
+  border-bottom: 1px solid rgba(0,255,136,0.18);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.terminal-body {
+  color: #00ff88;
+}
+
+.t-out {
+  color: #7bd88f;
+}
+
+.stat-val {
+  animation: subtlePulse 3s infinite alternate;
+}
+
+@keyframes subtlePulse {
+  from { text-shadow: 0 0 10px rgba(0,255,136,0.3); }
+  to   { text-shadow: 0 0 20px rgba(0,255,136,0.6); }
+}
+/* === END PATCH === */
+
+
+/* === DARK/LIGHT TOGGLE + BONUS === */
+:root.light {
+  --bg: #f4f7f6;
+  --surface: #ffffff;
+  --text: #1a2a1a;
+  --dim: #5a6a5a;
+  --border: #d0e0d0;
+}
+
+/* Toggle button */
+.theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0,255,136,0.1);
+  border: 1px solid rgba(0,255,136,0.3);
+  color: var(--trace);
+  padding: 10px 14px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+}
+
+/* Bonus: subtle gradient overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(0,255,136,0.08), transparent 40%),
+              radial-gradient(circle at 80% 80%, rgba(0,204,255,0.08), transparent 40%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Bonus: accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* === END === */
+
+
+#signal-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- Circuit background canvas -->
+<canvas id="circuit-bg"></canvas>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">CHRIF-SoC</div>
+  <ul class="nav-links">
+    <li><a href="#architecture">ARCH</a></li>
+    <li><a href="#specs">SPECS</a></li>
+    <li><a href="#pinout">PINOUT</a></li>
+    <li><a href="#features">FEATURES</a></li>
+    <li><a href="#layers">LAYERS</a></li>
+    <li><a href="#terminal-section">TERMINAL</a></li>
+  </ul>
+  <div class="nav-status"><div class="status-dot"></div>BOARD ONLINE</div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section id="hero">
+  <div class="hex-bg"></div>
+  <div class="corner-deco tl"></div>
+  <div class="corner-deco tr"></div>
+  <div class="corner-deco bl"></div>
+  <div class="corner-deco br"></div>
+
+  <div class="hero-badge">REV. 1.0 · RP2040 BASED · CUSTOM SoC DESIGN</div>
+
+  <h1 class="hero-title">
+    CHRIF<br><span>SoC PCB</span>
+  </h1>
+  <p class="hero-sub">
+    A hand-crafted, custom system-on-chip PCB built from the ground up — integrating RP2040 silicon, RGB illumination, QMK firmware, and precision IO routing.
+  </p>
+
+  <!-- 3D PCB MODEL -->
+  <div id="pcb-scene">
+    <canvas id="signal-layer"></canvas>
+    <div id="pcb-board">
+      <div class="pcb-face pcb-front">
+        <canvas id="pcb-canvas"></canvas>
+      </div>
+      <div class="pcb-edge-r"></div>
+      <div class="pcb-edge-l"></div>
+      <div class="pcb-edge-t"></div>
+      <div class="pcb-edge-b"></div>
+      <div class="pcb-face pcb-back"></div>
+    </div>
+  </div>
+
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-val" data-count="133">0</div>
+      <div class="stat-label">MHz CLOCK</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" data-count="264">0</div>
+      <div class="stat-label">KB SRAM</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" data-count="4">0</div>
+      <div class="stat-label">KEY MATRIX</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" data-count="2">0</div>
+      <div class="stat-label">CORE ARM</div>
+    </div>
+  </div>
+
+  <div class="scroll-cue">↓ &nbsp; EXPLORE ARCHITECTURE &nbsp; ↓</div>
+</section>
+
+<!-- ═══ ARCHITECTURE ═══ -->
+<section id="architecture">
+  <div class="section-wrap">
+    <div class="section-tag reveal">SYSTEM ARCHITECTURE</div>
+    <h2 class="section-title reveal">BLOCK DIAGRAM OVERVIEW</h2>
+    <div class="arch-grid reveal">
+      <div class="arch-block">
+        <div class="arch-num">01 / PROCESSOR</div>
+        <div class="arch-name">RP2040 DUAL-CORE</div>
+        <div class="arch-desc">Dual ARM Cortex-M0+ at 133 MHz. Executes QMK firmware with USB HID stack. PIO state machines handle GPIO timing with cycle-level precision.</div>
+        <div class="arch-icon">⚙️</div>
+      </div>
+      <div class="arch-block">
+        <div class="arch-num">02 / MEMORY</div>
+        <div class="arch-name">264KB SRAM + 2MB FLASH</div>
+        <div class="arch-desc">On-chip SRAM split across 6 banks. External QSPI NOR flash via XIP for firmware storage. Boot ROM contains USB bootloader for drag-and-drop flashing.</div>
+        <div class="arch-icon">💾</div>
+      </div>
+      <div class="arch-block">
+        <div class="arch-num">03 / KEY MATRIX</div>
+        <div class="arch-name">4-KEY GPIO ROUTING</div>
+        <div class="arch-desc">GP1/GP2/GP4/GP3 as row scan lines, GP26 as column. Diode-less matrix with internal pull-ups. Sub-millisecond debounce via QMK's scan loop.</div>
+        <div class="arch-icon">⌨️</div>
+      </div>
+      <div class="arch-block">
+        <div class="arch-num">04 / ILLUMINATION</div>
+        <div class="arch-name">SK6812MINI RGB</div>
+        <div class="arch-desc">Addressable RGB LEDs on GP6. Single-wire NZR protocol driven via RP2040 PIO. Per-key RGB with full QMK RGB matrix support and animations.</div>
+        <div class="arch-icon">💡</div>
+      </div>
+      <div class="arch-block">
+        <div class="arch-num">05 / CONNECTIVITY</div>
+        <div class="arch-name">USB 2.0 FULL-SPEED</div>
+        <div class="arch-desc">Native USB 2.0 FS (12 Mbps) via XIAO RP2040 on-board controller. Enumerates as HID composite device. No external USB chip required.</div>
+        <div class="arch-icon">🔌</div>
+      </div>
+      <div class="arch-block">
+        <div class="arch-num">06 / FIRMWARE</div>
+        <div class="arch-name">QMK 0.32+ STACK</div>
+        <div class="arch-desc">Full QMK framework with keyboard.json configuration. Layers, macros, tap-dance, and RGB animations. Compiled via GitHub Actions or local toolchain.</div>
+        <div class="arch-icon">📦</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SPECS ═══ -->
+<section id="specs">
+  <div class="section-wrap">
+    <div class="section-tag reveal">TECHNICAL SPECIFICATION</div>
+    <h2 class="section-title reveal">HARDWARE DATASHEET</h2>
+    <div class="specs-layout">
+      <div>
+        <div class="spec-category reveal">
+          <div class="spec-cat-title">PROCESSOR & MEMORY</div>
+          <div class="spec-row"><span class="spec-key">MCU</span><span class="spec-val highlight">RP2040</span></div>
+          <div class="spec-row"><span class="spec-key">Cores</span><span class="spec-val">2× ARM Cortex-M0+</span></div>
+          <div class="spec-row"><span class="spec-key">Clock Speed</span><span class="spec-val highlight">133 MHz</span></div>
+          <div class="spec-row"><span class="spec-key">SRAM</span><span class="spec-val">264 KB (6 banks)</span></div>
+          <div class="spec-row"><span class="spec-key">Flash</span><span class="spec-val">2 MB QSPI NOR</span></div>
+          <div class="spec-row"><span class="spec-key">Boot ROM</span><span class="spec-val">8 KB (USB bootloader)</span></div>
+        </div>
+        <div class="spec-category reveal">
+          <div class="spec-cat-title">GPIO & IO</div>
+          <div class="spec-row"><span class="spec-key">Row Pins</span><span class="spec-val">GP1, GP2, GP3, GP4</span></div>
+          <div class="spec-row"><span class="spec-key">Column Pin</span><span class="spec-val">GP26</span></div>
+          <div class="spec-row"><span class="spec-key">RGB Data</span><span class="spec-val highlight">GP6 (PIO)</span></div>
+          <div class="spec-row"><span class="spec-key">USB D+/D-</span><span class="spec-val">Built-in</span></div>
+          <div class="spec-row"><span class="spec-key">Logic Level</span><span class="spec-val">3.3V</span></div>
+        </div>
+        <div class="spec-category reveal">
+          <div class="spec-cat-title">CONNECTIVITY</div>
+          <div class="spec-row"><span class="spec-key">USB</span><span class="spec-val highlight">USB 2.0 Full-Speed</span></div>
+          <div class="spec-row"><span class="spec-key">HID Class</span><span class="spec-val">Keyboard + Mouse</span></div>
+          <div class="spec-row"><span class="spec-key">Bootloader</span><span class="spec-val">UF2 / RPI-RP2</span></div>
+          <div class="spec-row"><span class="spec-key">Debug</span><span class="spec-val">SWD (3-pin)</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="spec-category reveal">
+          <div class="spec-cat-title">PERFORMANCE METRICS</div>
+          <div class="perf-bars">
+            <div class="perf-item">
+              <div class="perf-header"><span>CPU UTILIZATION</span><span>12%</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="12"></div></div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-header"><span>SRAM USAGE</span><span>28%</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="28"></div></div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-header"><span>FLASH USAGE</span><span>45%</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="45"></div></div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-header"><span>USB BANDWIDTH</span><span>8%</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="8"></div></div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-header"><span>RGB PIO LOAD</span><span>6%</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="6"></div></div>
+            </div>
+            <div class="perf-item">
+              <div class="perf-header"><span>KEY SCAN RATE</span><span>1000Hz</span></div>
+              <div class="perf-track"><div class="perf-fill" data-w="100"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="spec-category reveal" style="margin-top:32px">
+          <div class="spec-cat-title">PHYSICAL</div>
+          <div class="spec-row"><span class="spec-key">Board Size</span><span class="spec-val">Custom Form Factor</span></div>
+          <div class="spec-row"><span class="spec-key">Layers</span><span class="spec-val">2 (Signal + GND)</span></div>
+          <div class="spec-row"><span class="spec-key">Substrate</span><span class="spec-val">FR4 1.6mm</span></div>
+          <div class="spec-row"><span class="spec-key">Finish</span><span class="spec-val highlight">HASL Lead-Free</span></div>
+          <div class="spec-row"><span class="spec-key">Silkscreen</span><span class="spec-val">White / Both Sides</span></div>
+          <div class="spec-row"><span class="spec-key">Firmware</span><span class="spec-val highlight">QMK 0.32.4+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PINOUT ═══ -->
+<section id="pinout">
+  <div class="section-wrap">
+    <div class="section-tag reveal">PIN ASSIGNMENT</div>
+    <h2 class="section-title reveal">INTERACTIVE PINOUT DIAGRAM</h2>
+    <div class="pinout-container">
+      <div id="pin-canvas-wrap" class="reveal">
+        <canvas id="pin-canvas" width="380" height="500"></canvas>
+      </div>
+      <div class="pin-info reveal" id="pin-info-panel">
+        <div class="pin-info-title" id="pin-title">GP6 · RGB DATA</div>
+        <div class="pin-info-sub" id="pin-sub">OUTPUT · PIO CONTROLLED</div>
+        <div class="pin-info-desc" id="pin-desc">
+          The RGB data line drives SK6812MINI addressable LEDs using RP2040's Programmable IO (PIO) peripheral. The PIO state machine bit-bangs the NZR protocol at precise timings without CPU intervention, enabling smooth animations and per-key color control.
+        </div>
+        <div class="pin-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div>POWER</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00ff88"></div>SIGNAL</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00ccff"></div>GPIO</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffd166"></div>SPECIAL</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#666"></div>GND</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section id="features">
+  <div class="section-wrap">
+    <div class="section-tag reveal">CAPABILITIES</div>
+    <h2 class="section-title reveal">BUILT-IN FEATURES</h2>
+    <div class="features-grid">
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">⚡</div>
+        <div class="feat-title">PIO STATE MACHINES</div>
+        <div class="feat-desc">8 independent PIO state machines run bit-exact protocols without CPU overhead. Used for RGB LED NZR timing and high-speed GPIO operations.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">🌈</div>
+        <div class="feat-title">PER-KEY RGB</div>
+        <div class="feat-desc">SK6812MINI LEDs under each key with 16.7 million colors. QMK RGB matrix enables breathing, reactive, and custom animation modes.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">⌨️</div>
+        <div class="feat-title">QMK FIRMWARE</div>
+        <div class="feat-desc">Full QMK stack with layers, macros, tap-dance, combo keys, and OLED support. Compiled and flashed via UF2 drag-and-drop — no special tools needed.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">🔄</div>
+        <div class="feat-title">USB BOOTLOADER</div>
+        <div class="feat-desc">Built-in UF2 bootloader enumerates as mass storage (RPI-RP2). Flash new firmware by dragging a .uf2 file — faster than any external programmer.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">🔬</div>
+        <div class="feat-title">DUAL-CORE PARALLEL</div>
+        <div class="feat-desc">Core 0 handles USB HID and key scanning. Core 1 can run LED animations and macros independently. Symmetric multiprocessing at 133 MHz each.</div>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">📐</div>
+        <div class="feat-title">CUSTOM PCB LAYOUT</div>
+        <div class="feat-desc">Hand-routed 2-layer PCB with optimized trace geometry, star ground topology, and decoupling caps on every power rail for clean signal integrity.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ LAYER EXPLORER ═══ -->
+<section id="layers">
+  <div class="section-wrap">
+    <div class="section-tag reveal">LAYER STACK</div>
+    <h2 class="section-title reveal">PCB LAYER EXPLORER</h2>
+    <div class="layers-wrap">
+      <div class="layer-stack reveal">
+        <div id="layer-container"></div>
+      </div>
+      <div class="layers-list reveal">
+        <div class="layer-item active" data-layer="0">
+          <div class="layer-item-name">TOP COPPER (F.Cu)</div>
+          <div class="layer-item-desc">Signal routing, component pads, USB traces, and RGB data line. 0.2mm min trace width.</div>
+        </div>
+        <div class="layer-item" data-layer="1">
+          <div class="layer-item-name">TOP SILKSCREEN (F.Silk)</div>
+          <div class="layer-item-desc">Component designators, pin labels, board name, and Hack Club branding in white ink.</div>
+        </div>
+        <div class="layer-item" data-layer="2">
+          <div class="layer-item-name">TOP SOLDERMASK (F.Mask)</div>
+          <div class="layer-item-desc">Solder mask openings at pad locations. Prevents bridging during reflow or hand soldering.</div>
+        </div>
+        <div class="layer-item" data-layer="3">
+          <div class="layer-item-name">SUBSTRATE (FR4 Core)</div>
+          <div class="layer-item-desc">1.6mm FR4 glass-epoxy core. Tg 130°C. Provides mechanical rigidity and dielectric isolation.</div>
+        </div>
+        <div class="layer-item" data-layer="4">
+          <div class="layer-item-name">BOTTOM COPPER (B.Cu)</div>
+          <div class="layer-item-desc">Ground plane pour + bottom signal layer. Provides EMI shielding and current return path.</div>
+        </div>
+        <div class="layer-item" data-layer="5">
+          <div class="layer-item-name">BOTTOM SOLDERMASK (B.Mask)</div>
+          <div class="layer-item-desc">Green LPI soldermask on back face. Protects copper from oxidation and environmental exposure.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TERMINAL ═══ -->
+<section id="terminal-section">
+  <div class="section-wrap">
+    <div class="section-tag reveal">FIRMWARE CONSOLE</div>
+    <h2 class="section-title reveal">LIVE BOARD STATUS</h2>
+    <div class="terminal-wrap reveal">
+      <div class="terminal-bar">
+        <div class="t-dot r"></div>
+        <div class="t-dot y"></div>
+        <div class="t-dot g"></div>
+        <span class="t-title">chrif@soc-pcb:~$ qmk console</span>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">CHRIF-SoC</div>
+  <div class="footer-copy">REV 1.0 · HACK CLUB BLUEPRINT · CUSTOM PCB ·  © 2025 CHRIF</div>
+  <div class="nav-status"><div class="status-dot"></div>ALL SYSTEMS NOMINAL</div>
+</footer>
+
+<script>
+// ─── CURSOR ───
+const cursor = document.getElementById('cursor');
+const ring = document.getElementById('cursor-ring');
+let mx=0, my=0, rx=0, ry=0;
+document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; cursor.style.left=mx+'px'; cursor.style.top=my+'px'; });
+function animRing() { rx+=(mx-rx)*0.12; ry+=(my-ry)*0.12; ring.style.left=rx+'px'; ring.style.top=ry+'px'; requestAnimationFrame(animRing); }
+animRing();
+document.querySelectorAll('a,button,.arch-block,.feat-card,.layer-item,.pcb-layer').forEach(el => {
+  el.addEventListener('mouseenter', () => { cursor.style.transform='translate(-50%,-50%) scale(2)'; ring.style.transform='translate(-50%,-50%) scale(1.5)'; });
+  el.addEventListener('mouseleave', () => { cursor.style.transform='translate(-50%,-50%) scale(1)'; ring.style.transform='translate(-50%,-50%) scale(1)'; });
+});
+
+// ─── CIRCUIT BACKGROUND ───
+const bgCanvas = document.getElementById('circuit-bg');
+const bgCtx = bgCanvas.getContext('2d');
+function resizeBg() { bgCanvas.width=innerWidth; bgCanvas.height=innerHeight; }
+resizeBg(); window.addEventListener('resize', resizeBg);
+
+const nodes = [];
+for(let i=0;i<60;i++) nodes.push({ x:Math.random()*2000, y:Math.random()*2000, vx:(Math.random()-0.5)*0.2, vy:(Math.random()-0.5)*0.2 });
+
+function drawBg() {
+  bgCtx.clearRect(0,0,bgCanvas.width,bgCanvas.height);
+  nodes.forEach(n => { n.x+=n.vx; n.y+=n.vy; if(n.x<0||n.x>bgCanvas.width) n.vx*=-1; if(n.y<0||n.y>bgCanvas.height) n.vy*=-1; });
+  for(let i=0;i<nodes.length;i++) {
+    for(let j=i+1;j<nodes.length;j++) {
+      const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if(d<180) {
+        bgCtx.strokeStyle=`rgba(0,255,136,${(1-d/180)*0.15})`;
+        bgCtx.lineWidth=0.5;
+        bgCtx.beginPath();
+        bgCtx.moveTo(nodes[i].x,nodes[i].y);
+        // Manhattan routing
+        bgCtx.lineTo(nodes[j].x,nodes[i].y);
+        bgCtx.lineTo(nodes[j].x,nodes[j].y);
+        bgCtx.stroke();
+        bgCtx.fillStyle=`rgba(0,255,136,${(1-d/180)*0.4})`;
+        bgCtx.beginPath(); bgCtx.arc(nodes[i].x,nodes[i].y,1.5,0,Math.PI*2); bgCtx.fill();
+      }
+    }
+  }
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ─── 3D PCB CANVAS ───
+const pcbCanvas = document.getElementById('pcb-canvas');
+const pCtx = pcbCanvas.getContext('2d');
+pcbCanvas.width = pcbCanvas.offsetWidth * devicePixelRatio;
+pcbCanvas.height = pcbCanvas.offsetHeight * devicePixelRatio;
+pCtx.scale(devicePixelRatio, devicePixelRatio);
+const pw = pcbCanvas.offsetWidth, ph = pcbCanvas.offsetHeight;
+
+function drawPCB() {
+  pCtx.clearRect(0,0,pw,ph);
+  // PCB surface
+  pCtx.fillStyle = '#0a2818';
+  pCtx.fillRect(0,0,pw,ph);
+
+  // Silk dots grid
+  pCtx.fillStyle = 'rgba(255,255,255,0.05)';
+  for(let x=20;x<pw;x+=20) for(let y=20;y<ph;y+=20) {
+    pCtx.beginPath(); pCtx.arc(x,y,0.5,0,Math.PI*2); pCtx.fill();
+  }
+
+  // Copper traces - horizontal
+  const traces = [
+    { x1:20,y1:50,x2:pw-20,y2:50,c:'#b87333' },
+    { x1:20,y1:ph-50,x2:pw-20,y2:ph-50,c:'#b87333' },
+    { x1:60,y1:80,x2:60,y2:ph-80,c:'#c8883d' },
+    { x1:pw-60,y1:80,x2:pw-60,y2:ph-80,c:'#c8883d' },
+    { x1:100,y1:60,x2:pw-100,y2:60,c:'#00cc66' },
+    { x1:100,y1:ph-60,x2:pw-100,y2:ph-60,c:'#00cc66' },
+  ];
+  traces.forEach(t => {
+    pCtx.strokeStyle=t.c; pCtx.lineWidth=2.5;
+    pCtx.shadowColor=t.c; pCtx.shadowBlur=6;
+    pCtx.beginPath(); pCtx.moveTo(t.x1,t.y1); pCtx.lineTo(t.x2,t.y2); pCtx.stroke();
+  });
+  pCtx.shadowBlur=0;
+
+  // Via holes
+  const vias = [{x:80,y:80},{x:pw-80,y:80},{x:80,y:ph-80},{x:pw-80,y:ph-80},{x:pw/2,y:40},{x:pw/2,y:ph-40}];
+  vias.forEach(v => {
+    pCtx.fillStyle='#b87333'; pCtx.beginPath(); pCtx.arc(v.x,v.y,7,0,Math.PI*2); pCtx.fill();
+    pCtx.fillStyle='#0a2818'; pCtx.beginPath(); pCtx.arc(v.x,v.y,4,0,Math.PI*2); pCtx.fill();
+    pCtx.strokeStyle='rgba(184,115,51,0.4)'; pCtx.lineWidth=1;
+    pCtx.beginPath(); pCtx.arc(v.x,v.y,10,0,Math.PI*2); pCtx.stroke();
+  });
+
+  // Main IC (XIAO RP2040)
+  const cx=pw/2-10, cy=ph/2;
+  pCtx.fillStyle='#0e0e0e';
+  pCtx.strokeStyle='#333';
+  pCtx.lineWidth=1;
+  roundRect(pCtx,cx-50,cy-50,100,100,4); pCtx.fill(); pCtx.stroke();
+  // Notch
+  pCtx.fillStyle='#1a1a1a';
+  pCtx.beginPath(); pCtx.arc(cx-50+12, cy-50, 6, 0, Math.PI*2); pCtx.fill();
+  // IC text
+  pCtx.fillStyle='rgba(255,255,255,0.35)';
+  pCtx.font='bold 7px monospace'; pCtx.textAlign='center';
+  pCtx.fillText('RP2040', cx, cy-8);
+  pCtx.font='6px monospace';
+  pCtx.fillText('XIAO', cx, cy+4);
+  pCtx.fillText('133MHz', cx, cy+16);
+  // IC pins
+  for(let i=0;i<8;i++) {
+    const py=cy-40+i*11;
+    pCtx.fillStyle='#b87333';
+    pCtx.fillRect(cx-65,py,14,4);
+    pCtx.fillRect(cx+51,py,14,4);
+  }
+
+  // Small components
+  drawChip(pCtx, 40, ph/2-30, 28, 16, '#111', 'C1');
+  drawChip(pCtx, pw-68, ph/2-30, 28, 16, '#111', 'C2');
+  drawChip(pCtx, pw/2+80, 100, 20, 12, '#1a0a0a', 'R1');
+  drawChip(pCtx, pw/2-100, 100, 20, 12, '#1a0a0a', 'R2');
+
+  // LED pads
+  const leds = [{x:pw/2-80,y:ph/2+60},{x:pw/2,y:ph/2+60},{x:pw/2+80,y:ph/2+60},{x:pw/2-40,y:ph/2-70}];
+  leds.forEach((l,i) => {
+    pCtx.fillStyle='rgba(255,100,0,0.2)';
+    pCtx.strokeStyle='rgba(255,150,50,0.6)'; pCtx.lineWidth=1;
+    pCtx.fillRect(l.x-10,l.y-10,20,20); pCtx.strokeRect(l.x-10,l.y-10,20,20);
+    pCtx.fillStyle='rgba(255,150,50,0.5)';
+    pCtx.font='6px monospace'; pCtx.textAlign='center';
+    pCtx.fillText('LED'+(i+1),l.x,l.y+3);
+  });
+
+  // Connector pads (USB)
+  pCtx.fillStyle='#b87333';
+  for(let i=0;i<5;i++) pCtx.fillRect(pw/2-20+i*10,ph-22,6,18);
+  pCtx.strokeStyle='rgba(184,115,51,0.5)';
+  pCtx.strokeRect(pw/2-26,ph-28,62,26);
+  pCtx.fillStyle='rgba(255,255,255,0.2)';
+  pCtx.font='7px monospace'; pCtx.textAlign='center';
+  pCtx.fillText('USB-C', pw/2+3, ph-32);
+
+  // Board outline highlight
+  pCtx.strokeStyle='rgba(0,255,136,0.15)';
+  pCtx.lineWidth=1;
+  pCtx.strokeRect(8,8,pw-16,ph-16);
+}
+
+function roundRect(ctx,x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function drawChip(ctx,x,y,w,h,fill,label) {
+  ctx.fillStyle=fill; ctx.strokeStyle='#444'; ctx.lineWidth=0.5;
+  ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.font='5px monospace'; ctx.textAlign='center';
+  ctx.fillText(label,x+w/2,y+h/2+2);
+}
+
+drawPCB();
+
+// ─── 3D DRAG ROTATION ───
+const pcbBoard = document.getElementById('pcb-board');
+const scene = document.getElementById('pcb-scene');
+let rotX=28, rotY=-18, dragging=false, lastX=0, lastY=0, autoRot=true;
+let autoAngle=0;
+
+scene.addEventListener('mousedown', e => { dragging=true; lastX=e.clientX; lastY=e.clientY; autoRot=false; });
+window.addEventListener('mousemove', e => {
+  if(!dragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  rotY+=dx*0.4; rotX-=dy*0.4;
+  rotX=Math.max(-60,Math.min(60,rotX));
+  lastX=e.clientX; lastY=e.clientY;
+  pcbBoard.style.transform=`rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+});
+window.addEventListener('mouseup', () => { dragging=false; });
+
+// Auto rotation when not dragging
+function autoRotate() {
+  if(autoRot) { autoAngle+=0.3; pcbBoard.style.transform=`rotateX(28deg) rotateY(${-18+Math.sin(autoAngle*Math.PI/180)*15}deg)`; }
+  requestAnimationFrame(autoRotate);
+}
+autoRotate();
+setTimeout(()=>{ autoRot=false; setTimeout(()=>{ autoRot=true; },5000); }, 100);
+scene.addEventListener('mouseleave', () => { setTimeout(()=>{ autoRot=true; }, 3000); });
+
+// ─── COUNTER ANIMATION ───
+function animateCount(el, target, dur=1800) {
+  let start=null;
+  function step(ts) { if(!start) start=ts; const p=Math.min((ts-start)/dur,1); el.textContent=Math.floor(p*target); if(p<1) requestAnimationFrame(step); else el.textContent=target; }
+  requestAnimationFrame(step);
+}
+const counters = document.querySelectorAll('[data-count]');
+const cObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) { animateCount(e.target, +e.target.dataset.count); cObs.unobserve(e.target); }});
+}, {threshold:0.5});
+counters.forEach(c => cObs.observe(c));
+
+// ─── SCROLL REVEAL ───
+const reveals = document.querySelectorAll('.reveal');
+const revObs = new IntersectionObserver(entries => {
+  entries.forEach((e,i) => { if(e.isIntersecting) { setTimeout(()=>e.target.classList.add('visible'),i*60); revObs.unobserve(e.target); }});
+}, {threshold:0.1});
+reveals.forEach(r => revObs.observe(r));
+
+// ─── PERF BARS ───
+const bars = document.querySelectorAll('.perf-fill');
+const barObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) { e.target.style.width=e.target.dataset.w+'%'; barObs.unobserve(e.target); }});
+}, {threshold:0.5});
+bars.forEach(b => barObs.observe(b));
+
+// ─── PINOUT DIAGRAM ───
+const pinCanvas = document.getElementById('pin-canvas');
+const pinCtx = pinCanvas.getContext('2d');
+const pW=380, pH=500;
+pinCanvas.width=pW*devicePixelRatio; pinCanvas.height=pH*devicePixelRatio;
+pinCtx.scale(devicePixelRatio,devicePixelRatio);
+
+const pins = [
+  {id:'GP0',  x:40,  y:60,  color:'#00ccff', type:'GPIO', desc:'General purpose IO — available for expansion or I2C SDA.', sub:'GPIO · I2C0 SDA · UART0 TX'},
+  {id:'GP1',  x:40,  y:100, color:'#00ff88', type:'ROW',  desc:'Row 0 scan pin — drives the first row of the key matrix. Configured as output in QMK.', sub:'ROW 0 · MATRIX SCAN'},
+  {id:'GP2',  x:40,  y:140, color:'#00ff88', type:'ROW',  desc:'Row 1 scan pin — drives second row of the key matrix with microsecond timing.', sub:'ROW 1 · MATRIX SCAN'},
+  {id:'GP3',  x:40,  y:180, color:'#00ff88', type:'ROW',  desc:'Row 3 scan pin — fourth row output with pull-up configuration in QMK firmware.', sub:'ROW 3 · MATRIX SCAN'},
+  {id:'GP4',  x:40,  y:220, color:'#00ff88', type:'ROW',  desc:'Row 2 scan pin — third row driver with 3.3V logic level swing.', sub:'ROW 2 · MATRIX SCAN'},
+  {id:'GP6',  x:40,  y:260, color:'#ffd166', type:'RGB',  desc:'SK6812MINI RGB LED data line. Driven by RP2040 PIO state machine with NZR bit-bang at precise timing — zero CPU overhead.', sub:'OUTPUT · PIO CONTROLLED'},
+  {id:'GP26', x:40,  y:300, color:'#00ccff', type:'COL',  desc:'Column 0 scan pin — shared column for all 4 keys read as input with pull-up during matrix scan.', sub:'COL 0 · ADC0 CAPABLE'},
+  {id:'3V3',  x:40,  y:360, color:'#ff6b35', type:'PWR',  desc:'3.3V regulated power rail from onboard LDO. Powers MCU core, IO, and peripherals. Max 300mA combined draw.', sub:'POWER · 3.3V OUTPUT'},
+  {id:'GND',  x:40,  y:400, color:'#666',    type:'GND',  desc:'Common ground reference. Connected to bottom copper plane pour for low-impedance return path.', sub:'GROUND · REFERENCE'},
+  {id:'VBUS', x:40,  y:440, color:'#ff6b35', type:'PWR',  desc:'5V USB bus power input. Feeds onboard LDO to generate 3.3V. Connected to USB-C VBUS pins.', sub:'POWER · 5V USB INPUT'},
+  {id:'SWD',  x:340, y:440, color:'#ffd166', type:'DBG',  desc:'Serial Wire Debug interface — 3-pin (SWDIO, SWDCLK, GND) for hardware debugging with compatible debugger.', sub:'DEBUG · SWD INTERFACE'},
+  {id:'USB',  x:340, y:380, color:'#ffd166', type:'USB',  desc:'USB 2.0 Full-Speed native interface (12 Mbps). D+ and D– differential pair routed with matched lengths for signal integrity.', sub:'USB 2.0 FS · D+/D-'},
+  {id:'RST',  x:340, y:320, color:'#00ccff', type:'CTRL', desc:'Active-low reset pin. Momentarily pulling low triggers MCU reset. Also used to enter bootloader mode when held during power-on.', sub:'RESET · ACTIVE LOW'},
+  {id:'BOOT', x:340, y:260, color:'#00ccff', type:'CTRL', desc:'Bootloader select pin. Hold LOW at power-on to enter USB UF2 mass-storage bootloader — enables drag-and-drop firmware flashing.', sub:'BOOTSEL · UF2 MODE'},
+];
+
+let selectedPin = null;
+
+function drawPinout() {
+  pinCtx.clearRect(0,0,pW,pH);
+  // Board outline
+  pinCtx.fillStyle='#0d2b1a';
+  roundRect(pinCtx, 80,20, 220,460, 8); pinCtx.fill();
+  pinCtx.strokeStyle='rgba(0,255,136,0.3)'; pinCtx.lineWidth=1.5;
+  roundRect(pinCtx, 80,20, 220,460, 8); pinCtx.stroke();
+  // Label inside
+  pinCtx.fillStyle='rgba(0,255,136,0.1)';
+  pinCtx.font='bold 10px monospace'; pinCtx.textAlign='center';
+  pinCtx.fillText('XIAO RP2040',190,180);
+  pinCtx.fillText('CHRIF-SoC',190,196);
+  // MCU rect
+  pinCtx.fillStyle='#111'; pinCtx.strokeStyle='#333'; pinCtx.lineWidth=1;
+  pinCtx.fillRect(140,220,100,80); pinCtx.strokeRect(140,220,100,80);
+  pinCtx.fillStyle='rgba(255,255,255,0.2)';
+  pinCtx.font='8px monospace'; pinCtx.textAlign='center';
+  pinCtx.fillText('RP2040',190,256); pinCtx.fillText('133MHz',190,268);
+
+  pins.forEach(p => {
+    const isLeft = p.x < 190;
+    const pinX = isLeft ? 80 : 300;
+    const padX = isLeft ? 65 : 315;
+    const lineX2 = isLeft ? 82 : 298;
+
+    const isSelected = selectedPin && selectedPin.id===p.id;
+    const alpha = selectedPin ? (isSelected ? 1 : 0.3) : 1;
+
+    // Trace
+    pinCtx.strokeStyle=isSelected ? p.color : `${p.color}${Math.floor(alpha*255).toString(16).padStart(2,'0')}`;
+    pinCtx.lineWidth=isSelected ? 2 : 1;
+    pinCtx.beginPath();
+    pinCtx.moveTo(padX, p.y);
+    pinCtx.lineTo(lineX2, p.y);
+    pinCtx.stroke();
+    if(isSelected) { pinCtx.shadowColor=p.color; pinCtx.shadowBlur=8; pinCtx.stroke(); pinCtx.shadowBlur=0; }
+
+    // Pin pad
+    pinCtx.fillStyle=isSelected?p.color:`${p.color}${Math.floor(alpha*255).toString(16).padStart(2,'0')}`;
+    pinCtx.beginPath(); pinCtx.arc(padX, p.y, 7, 0, Math.PI*2); pinCtx.fill();
+    if(isSelected) { pinCtx.shadowColor=p.color; pinCtx.shadowBlur=15; pinCtx.fill(); pinCtx.shadowBlur=0; }
+    // Hole
+    pinCtx.fillStyle='#0d2b1a';
+    pinCtx.beginPath(); pinCtx.arc(padX, p.y, 3, 0, Math.PI*2); pinCtx.fill();
+
+    // Label
+    pinCtx.fillStyle=`rgba(200,220,200,${alpha})`;
+    pinCtx.font=`${isSelected?'bold ':''}11px monospace`;
+    pinCtx.textAlign=isLeft ? 'right' : 'left';
+    pinCtx.fillText(p.id, isLeft ? 52 : 328, p.y+4);
+    // Type tag
+    pinCtx.fillStyle=`${p.color}${Math.floor(alpha*0.7*255).toString(16).padStart(2,'0')}`;
+    pinCtx.font='8px monospace';
+    pinCtx.textAlign=isLeft ? 'right' : 'left';
+    pinCtx.fillText(p.type, isLeft ? 52 : 328, p.y+16);
+  });
+}
+drawPinout();
+
+// Pin click
+pinCanvas.addEventListener('click', e => {
+  const rect=pinCanvas.getBoundingClientRect();
+  const cx=(e.clientX-rect.left)*(pW/rect.width);
+  const cy=(e.clientY-rect.top)*(pH/rect.height);
+  let hit=null;
+  pins.forEach(p => {
+    const isLeft=p.x<190; const padX=isLeft?65:315;
+    const dx=cx-padX, dy=cy-p.y;
+    if(Math.sqrt(dx*dx+dy*dy)<14) hit=p;
+  });
+  selectedPin = hit===selectedPin ? null : hit;
+  if(selectedPin) {
+    document.getElementById('pin-title').textContent=`${selectedPin.id} · ${selectedPin.type}`;
+    document.getElementById('pin-sub').textContent=selectedPin.sub;
+    document.getElementById('pin-desc').textContent=selectedPin.desc;
+    document.getElementById('pin-title').style.color=selectedPin.color;
+  } else {
+    document.getElementById('pin-title').textContent='CLICK A PIN TO INSPECT';
+    document.getElementById('pin-sub').textContent='INTERACTIVE PINOUT DIAGRAM';
+    document.getElementById('pin-desc').textContent='Click any pad on the diagram to view its function, electrical characteristics, and firmware usage.';
+    document.getElementById('pin-title').style.color='var(--trace)';
+  }
+  drawPinout();
+});
+
+pinCanvas.addEventListener('mousemove', e => {
+  const rect=pinCanvas.getBoundingClientRect();
+  const cx=(e.clientX-rect.left)*(pW/rect.width);
+  const cy=(e.clientY-rect.top)*(pH/rect.height);
+  let hit=false;
+  pins.forEach(p => {
+    const isLeft=p.x<190; const padX=isLeft?65:315;
+    const dx=cx-padX, dy=cy-p.y;
+    if(Math.sqrt(dx*dx+dy*dy)<14) hit=true;
+  });
+  pinCanvas.style.cursor=hit?'pointer':'default';
+});
+
+// ─── LAYER EXPLORER ───
+const layerData = [
+  { name:'TOP COPPER', color:'rgba(184,115,51,0.8)', border:'#c8883d', opacity:1 },
+  { name:'F.SILKSCREEN', color:'rgba(255,255,255,0.7)', border:'#eee', opacity:0.9 },
+  { name:'F.SOLDERMASK', color:'rgba(0,120,60,0.6)', border:'#00aa44', opacity:0.7 },
+  { name:'FR4 CORE', color:'rgba(240,230,180,0.5)', border:'#d4c87a', opacity:0.6 },
+  { name:'B.COPPER', color:'rgba(150,100,30,0.7)', border:'#aa7722', opacity:0.8 },
+  { name:'B.SOLDERMASK', color:'rgba(0,80,30,0.7)', border:'#006622', opacity:0.7 },
+];
+
+const lc = document.getElementById('layer-container');
+const spread = 44;
+layerData.forEach((l,i) => {
+  const div=document.createElement('div');
+  div.className='pcb-layer';
+  div.style.cssText=`
+    background:${l.color};
+    border:1px solid ${l.border};
+    transform:translateX(-50%) translateZ(${(layerData.length/2-i)*spread}px);
+    opacity:${l.opacity};
+  `;
+  div.innerHTML=`<span style="color:${l.border}">${l.name}</span>`;
+  div.dataset.idx=i;
+  lc.appendChild(div);
+  div.addEventListener('click',()=>{ document.querySelectorAll('.layer-item').forEach((li,j)=>li.classList.toggle('active',j===i)); });
+});
+
+document.querySelectorAll('.layer-item').forEach((item,i) => {
+  item.addEventListener('click',()=>{
+    document.querySelectorAll('.layer-item').forEach(li=>li.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.pcb-layer').forEach((l,j)=>{
+      l.style.opacity = j===i ? '1' : (Math.abs(j-i)<2 ? '0.4' : '0.1');
+      l.style.filter = j===i ? `drop-shadow(0 0 8px ${layerData[j].border})` : 'none';
+    });
+  });
+});
+
+// Auto rotate layer stack
+let lcAngle=0;
+function rotateLC() { lcAngle+=0.25; lc.style.transform=`rotateX(30deg) rotateY(${-20+Math.sin(lcAngle*Math.PI/180)*10}deg)`; requestAnimationFrame(rotateLC); }
+rotateLC();
+
+// ─── TERMINAL ───
+const termBody = document.getElementById('terminal-body');
+const termLines = [
+  {t:200,  html:`<div class="t-line"><span class="t-prompt">chrif@soc-pcb:~$ </span><span class="t-cmd">qmk console --device chrifs_hackpad2</span></div>`},
+  {t:600,  html:`<div class="t-line t-out">Connecting to HID device...</div>`},
+  {t:1100, html:`<div class="t-line t-out">Device found: <span class="t-val">CHRIF-SoC v1.0</span> [04D8:EE00]</div>`},
+  {t:1500, html:`<div class="t-line t-out">Firmware: <span class="t-val">QMK 0.32.4</span> | Board: <span class="t-val">chrifs_hackpad2</span></div>`},
+  {t:2000, html:`<div class="t-line"><span class="t-prompt">chrif@soc-pcb:~$ </span><span class="t-cmd">qmk info -kb chrifs_hackpad2</span></div>`},
+  {t:2400, html:`<div class="t-line t-out">Keyboard Name:    <span class="t-val">Chrif's Hackpad 2</span></div>`},
+  {t:2600, html:`<div class="t-line t-out">Manufacturer:     <span class="t-val">Chrif (Hack Club Blueprint)</span></div>`},
+  {t:2800, html:`<div class="t-line t-out">Processor:        <span class="t-val">RP2040</span></div>`},
+  {t:3000, html:`<div class="t-line t-out">Bootloader:       <span class="t-val">rp2040</span></div>`},
+  {t:3200, html:`<div class="t-line t-out">Matrix Rows:      <span class="t-val">4</span>  |  Matrix Cols: <span class="t-val">1</span></div>`},
+  {t:3400, html:`<div class="t-line t-out">RGB LED Count:    <span class="t-val">4</span>  |  Driver: <span class="t-val">sk6812mini</span></div>`},
+  {t:3600, html:`<div class="t-line t-out">USB VID/PID:      <span class="t-val">04D8:EE00</span></div>`},
+  {t:4000, html:`<div class="t-line"><span class="t-prompt">chrif@soc-pcb:~$ </span><span class="t-cmd">cat /sys/bus/usb/devices/soc/status</span></div>`},
+  {t:4400, html:`<div class="t-line t-out">[ <span class="t-val">OK</span> ] USB HID: ENUMERATED</div>`},
+  {t:4600, html:`<div class="t-line t-out">[ <span class="t-val">OK</span> ] RGB MATRIX: ACTIVE — mode=<span class="t-val">breathing</span></div>`},
+  {t:4800, html:`<div class="t-line t-out">[ <span class="t-val">OK</span> ] KEY SCAN: 1000Hz — debounce=<span class="t-val">5ms</span></div>`},
+  {t:5000, html:`<div class="t-line t-out">[ <span class="t-val">OK</span> ] LAYERS: 0 active — count=<span class="t-val">3</span></div>`},
+  {t:5200, html:`<div class="t-line t-err">[ WARN ] Board temperature: <span class="t-val">42°C</span> (normal)</div>`},
+  {t:5600, html:`<div class="t-line"><span class="t-prompt">chrif@soc-pcb:~$ </span><span class="t-err">_</span><span class="t-cursor"></span></div>`},
+];
+
+let termStarted=false;
+const termObs=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{ if(e.isIntersecting&&!termStarted) { termStarted=true; runTerminal(); }});
+},{threshold:0.3});
+termObs.observe(termBody);
+
+function runTerminal() {
+  termLines.forEach(line=>{ setTimeout(()=>{ termBody.innerHTML+=line.html; termBody.scrollTop=termBody.scrollHeight; },line.t); });
+}
+
+// ─── SIGNAL VISUALIZER ───
+const signalCanvas = document.getElementById('signal-layer');
+const sCtx = signalCanvas.getContext('2d');
+
+function resizeSignal() {
+  signalCanvas.width = pcbCanvas.offsetWidth * devicePixelRatio;
+  signalCanvas.height = pcbCanvas.offsetHeight * devicePixelRatio;
+  sCtx.setTransform(1,0,0,1,0,0);
+  sCtx.scale(devicePixelRatio, devicePixelRatio);
+}
+resizeSignal();
+window.addEventListener('resize', resizeSignal);
+
+let pulses = [];
+
+function spawnPulse(x1, y1, x2, y2, color) {
+  pulses.push({
+    x1, y1, x2, y2,
+    t: Math.random(),
+    speed: 0.01 + Math.random() * 0.02,
+    color
+  });
+}
+
+function drawSignals() {
+  sCtx.clearRect(0, 0, signalCanvas.width, signalCanvas.height);
+
+  pulses.forEach(p => {
+    p.t += p.speed;
+    if (p.t > 1) p.t = 0;
+
+    const x = p.x1 + (p.x2 - p.x1) * p.t;
+    const y = p.y1 + (p.y2 - p.y1) * p.t;
+
+    sCtx.fillStyle = p.color;
+    sCtx.shadowColor = p.color;
+    sCtx.shadowBlur = 10;
+
+    sCtx.beginPath();
+    sCtx.arc(x, y, 3, 0, Math.PI * 2);
+    sCtx.fill();
+  });
+
+  requestAnimationFrame(drawSignals);
+}
+drawSignals();
+
+// Interaction hooks
+document.querySelectorAll('.arch-block').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    for (let i = 0; i < 6; i++) {
+      spawnPulse(40, 50, pcbCanvas.offsetWidth - 40, pcbCanvas.offsetHeight - 50, '#00ff88');
+    }
+  });
+});
+
+pinCanvas.addEventListener('click', () => {
+  for (let i = 0; i < 10; i++) {
+    spawnPulse(
+      Math.random() * pcbCanvas.offsetWidth,
+      Math.random() * pcbCanvas.offsetHeight,
+      pcbCanvas.offsetWidth / 2,
+      pcbCanvas.offsetHeight / 2,
+      '#00ccff'
+    );
+  }
+});
+
+</script>
+
+<button class="theme-toggle" onclick="toggleTheme()">TOGGLE THEME</button>
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('light');
+}
+
+// ─── SIGNAL VISUALIZER ───
+const signalCanvas = document.getElementById('signal-layer');
+const sCtx = signalCanvas.getContext('2d');
+
+function resizeSignal() {
+  signalCanvas.width = pcbCanvas.offsetWidth * devicePixelRatio;
+  signalCanvas.height = pcbCanvas.offsetHeight * devicePixelRatio;
+  sCtx.setTransform(1,0,0,1,0,0);
+  sCtx.scale(devicePixelRatio, devicePixelRatio);
+}
+resizeSignal();
+window.addEventListener('resize', resizeSignal);
+
+let pulses = [];
+
+function spawnPulse(x1, y1, x2, y2, color) {
+  pulses.push({
+    x1, y1, x2, y2,
+    t: Math.random(),
+    speed: 0.01 + Math.random() * 0.02,
+    color
+  });
+}
+
+function drawSignals() {
+  sCtx.clearRect(0, 0, signalCanvas.width, signalCanvas.height);
+
+  pulses.forEach(p => {
+    p.t += p.speed;
+    if (p.t > 1) p.t = 0;
+
+    const x = p.x1 + (p.x2 - p.x1) * p.t;
+    const y = p.y1 + (p.y2 - p.y1) * p.t;
+
+    sCtx.fillStyle = p.color;
+    sCtx.shadowColor = p.color;
+    sCtx.shadowBlur = 10;
+
+    sCtx.beginPath();
+    sCtx.arc(x, y, 3, 0, Math.PI * 2);
+    sCtx.fill();
+  });
+
+  requestAnimationFrame(drawSignals);
+}
+drawSignals();
+
+// Interaction hooks
+document.querySelectorAll('.arch-block').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    for (let i = 0; i < 6; i++) {
+      spawnPulse(40, 50, pcbCanvas.offsetWidth - 40, pcbCanvas.offsetHeight - 50, '#00ff88');
+    }
+  });
+});
+
+pinCanvas.addEventListener('click', () => {
+  for (let i = 0; i < 10; i++) {
+    spawnPulse(
+      Math.random() * pcbCanvas.offsetWidth,
+      Math.random() * pcbCanvas.offsetHeight,
+      pcbCanvas.offsetWidth / 2,
+      pcbCanvas.offsetHeight / 2,
+      '#00ccff'
+    );
+  }
+});
+
+</script>
+
+</body>
+</html>
